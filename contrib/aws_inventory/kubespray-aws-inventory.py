@@ -13,7 +13,7 @@ class SearchEC2Tags(object):
       self.search_tags()
     if self.args.host:
       data = {}
-      print json.dumps(data, indent=2)
+      print(json.dumps(data, indent=2))
 
   def parse_args(self):
 
@@ -22,6 +22,9 @@ class SearchEC2Tags(object):
       self.vpc_visibility = os.environ['VPC_VISIBILITY']
     else:
       self.vpc_visibility = "private"
+    
+    if "CLUSTER" not in os.environ:
+      raise Exception('Must specify the cluster name using the CLUSTER environment variable')
 
     ##Support --list and --host flags. We largely ignore the host one.
     parser = argparse.ArgumentParser()
@@ -36,13 +39,19 @@ class SearchEC2Tags(object):
     ##Search ec2 three times to find nodes of each group type. Relies on kubespray-role key/value.
     for group in ["kube-master", "kube-node", "etcd"]:
       hosts[group] = []
+      tag_cluster = "kubespray-cluster"
       tag_key = "kubespray-role"
       tag_value = ["*"+group+"*"]
       region = os.environ['REGION']
+      cluster = os.environ['CLUSTER']
 
       ec2 = boto3.resource('ec2', region)
 
-      instances = ec2.instances.filter(Filters=[{'Name': 'tag:'+tag_key, 'Values': tag_value}, {'Name': 'instance-state-name', 'Values': ['running']}])
+      instances = ec2.instances.filter(Filters=[
+        {'Name': 'tag:'+tag_cluster, 'Values': [cluster]},
+        {'Name': 'tag:'+tag_key, 'Values': tag_value},
+        {'Name': 'instance-state-name', 'Values': ['running']}
+      ])
       for instance in instances:
         if self.vpc_visibility == "public":
           hosts[group].append(instance.public_dns_name)
@@ -56,6 +65,6 @@ class SearchEC2Tags(object):
           }
 
     hosts['k8s-cluster'] = {'children':['kube-master', 'kube-node']}
-    print json.dumps(hosts, sort_keys=True, indent=2)
+    print(json.dumps(hosts, sort_keys=True, indent=2))
 
 SearchEC2Tags()
